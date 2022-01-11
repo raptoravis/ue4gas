@@ -1,0 +1,14 @@
+.DS_Store
+.vs/
+Binaries/
+Build/
+Intermediate/
+Saved/
+__MACOSX/
+backup.sh
+*.sdf
+*.sln
+*.xcworkspace
+*.VC.db
+*.VC.VC.opendb
+enc_temp_folder/
