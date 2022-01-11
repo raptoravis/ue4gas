@@ -45,11 +45,11 @@ public:
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = GAS)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = GAS)
 		TSubclassOf<class UGameplayEffect> DefaultAttributeEffect;
 
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = GAS)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = GAS)
 		TArray<TSubclassOf<class UGASGameplayAbility>> DefaultAbilities;
 protected:
 
