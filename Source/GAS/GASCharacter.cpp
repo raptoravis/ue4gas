@@ -8,9 +8,17 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "GASAbilitySystemComponent.h"
+#include "GASAttributeSet.h"
+#include "GASGameplayAbility.h"
 
 //////////////////////////////////////////////////////////////////////////
 // AGASCharacter
+
+UAbilitySystemComponent* AGASCharacter::GetAbilitySystemComponent() const
+{
+	return AbilitySystemComponent;
+}
 
 AGASCharacter::AGASCharacter()
 {
@@ -45,8 +53,77 @@ AGASCharacter::AGASCharacter()
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named MyCharacter (to avoid direct content references in C++)
+
+	this->AbilitySystemComponent = CreateDefaultSubobject<UGASAbilitySystemComponent>("AbilitySystemComp");
+	this->AbilitySystemComponent->SetIsReplicated(true);
+	this->AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Minimal);
+
+	this->Attributes = CreateDefaultSubobject<UGASAttributeSet>("Attributes");
 }
 
+void AGASCharacter::InitializeAttributes()
+{
+	if (this->AbilitySystemComponent && this->DefaultAttributeEffect)
+	{
+		FGameplayEffectContextHandle EffectContext = this->AbilitySystemComponent->MakeEffectContext();
+		EffectContext.AddSourceObject(this);
+
+		FGameplayEffectSpecHandle SpecHandle = this->AbilitySystemComponent->MakeOutgoingSpec(this->DefaultAttributeEffect, 1, EffectContext);
+
+		if (SpecHandle.IsValid())
+		{
+			FActiveGameplayEffectHandle GEHandle = this->AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+		}
+	}
+}
+
+void AGASCharacter::GiveAbilities()
+{
+	if (HasAuthority() && this->AbilitySystemComponent)
+	{
+		for (TSubclassOf<UGASGameplayAbility>& StartupAbility : this->DefaultAbilities)
+		{
+			this->AbilitySystemComponent->GiveAbility(
+				FGameplayAbilitySpec(StartupAbility, 1, static_cast<int32>(StartupAbility.GetDefaultObject()->AbilityInputID), this));
+		}
+	}
+}
+
+
+void AGASCharacter::BindAbilityToInputComponent()
+{
+	if (this->AbilitySystemComponent && this->InputComponent)
+	{
+		const FGameplayAbilityInputBinds Binds("Confirm", "Cancel", "EGASAbilityInputID",
+			static_cast<int32>(EGASAbilityInputID::Confirm), static_cast<int32>(EGASAbilityInputID::Cancel));
+
+		this->AbilitySystemComponent->BindAbilityActivationToInputComponent(this->InputComponent, Binds);
+	}
+}
+
+void AGASCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+
+
+	// server gas init
+	this->AbilitySystemComponent->InitAbilityActorInfo(this, this);
+
+	this->InitializeAttributes();
+	this->GiveAbilities();
+}
+
+void AGASCharacter::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+
+	// client gas init
+	this->AbilitySystemComponent->InitAbilityActorInfo(this, this);
+
+	this->InitializeAttributes();
+
+	this->BindAbilityToInputComponent();
+}
 //////////////////////////////////////////////////////////////////////////
 // Input
 
@@ -74,6 +151,8 @@ void AGASCharacter::SetupPlayerInputComponent(class UInputComponent* PlayerInput
 
 	// VR headset functionality
 	PlayerInputComponent->BindAction("ResetVR", IE_Pressed, this, &AGASCharacter::OnResetVR);
+
+	this->BindAbilityToInputComponent();
 }
 
 
@@ -84,12 +163,12 @@ void AGASCharacter::OnResetVR()
 
 void AGASCharacter::TouchStarted(ETouchIndex::Type FingerIndex, FVector Location)
 {
-		Jump();
+	Jump();
 }
 
 void AGASCharacter::TouchStopped(ETouchIndex::Type FingerIndex, FVector Location)
 {
-		StopJumping();
+	StopJumping();
 }
 
 void AGASCharacter::TurnAtRate(float Rate)
@@ -120,12 +199,12 @@ void AGASCharacter::MoveForward(float Value)
 
 void AGASCharacter::MoveRight(float Value)
 {
-	if ( (Controller != NULL) && (Value != 0.0f) )
+	if ((Controller != NULL) && (Value != 0.0f))
 	{
 		// find out which way is right
 		const FRotator Rotation = Controller->GetControlRotation();
 		const FRotator YawRotation(0, Rotation.Yaw, 0);
-	
+
 		// get right vector 
 		const FVector Direction = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 		// add movement in that direction
